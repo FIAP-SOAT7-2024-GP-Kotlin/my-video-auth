@@ -1,11 +1,11 @@
 version: '3.8'
 services:
-  my_burger_db:
-    container_name: my_burger_db
+  my_video_db:
+    container_name: my_video_db
     environment:
-      - POSTGRES_USER=my_burger
+      - POSTGRES_USER=my_video
       - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=my_burger
+      - POSTGRES_DB=my_video
     build:
       context: .
       dockerfile: Dockerfile
