@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  my_burger_db:
+    container_name: my_burger_db
+    environment:
+      - POSTGRES_USER=my_burger
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=my_burger
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5432:5432"
