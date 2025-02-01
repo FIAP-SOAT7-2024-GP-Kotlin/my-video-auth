@@ -23,7 +23,7 @@ const (
 )
 
 type Request struct {
-	Cpf      *string     `json:"cpf"`
+	Email    *string     `json:"email"`
 	Password *string     `json:"password"`
 	Type     RequestType `json:"type"`
 	Token    *string     `json:"token"`
@@ -48,14 +48,14 @@ type Response struct {
 }
 
 type Claims struct {
-	CPF  string `json:"cpf"`
-	Role string `json:"role"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
 	jwt.StandardClaims
 }
 
 type User struct {
 	ID       uuid.UUID
-	Cpf      string
+	Email    string
 	Password string
 	Role     string
 }
@@ -118,22 +118,22 @@ func Main(input Request) (*Response, error) {
 			log.Println("Error validating JWT:", err)
 			return &Response{StatusCode: http.StatusUnauthorized, Message: err.Error()}, err
 		}
-		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("Valid token for cpf: %s", claims.CPF)}, nil
+		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("Valid token for email: %s", claims.Email)}, nil
 	case GetUser:
 		response, err := handleGetUser(input)
 		if err != nil {
 			log.Println("Error getting user:", err)
 			return &Response{StatusCode: http.StatusNotFound, Message: err.Error()}, err
 		}
-		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("User found for cpf: %s, role: %s", response.Cpf, response.Role), Body: map[string]string{"cpf": response.Cpf, "role": response.Role}}, nil
+		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("User found for cpf: %s, role: %s", response.Email, response.Role), Body: map[string]string{"cpf": response.Email, "role": response.Role}}, nil
 	default:
 		return &Response{StatusCode: http.StatusBadRequest, Message: "Invalid request type"}, ErrNoRequest
 	}
 }
 
 func handleAuthentication(request Request) (string, error) {
-	if request.Cpf == nil || request.Password == nil {
-		return "", fmt.Errorf("cpf and password are required")
+	if request.Email == nil || request.Password == nil {
+		return "", fmt.Errorf("email and password are required")
 	}
 	db, err := setupDbConnection()
 	if err != nil {
@@ -142,14 +142,14 @@ func handleAuthentication(request Request) (string, error) {
 	}
 	defer db.Close()
 
-	user, err := findUserByCPF(db, *request.Cpf)
+	user, err := findUserByEmail(db, *request.Email)
 	if err != nil {
-		log.Println("Error finding user by CPF:", err)
+		log.Println("Error finding user by Email:", err)
 		return "", err
 	}
 
 	if user == nil {
-		log.Println("User not found for cpf:", request.Cpf)
+		log.Println("User not found for cpf:", request.Email)
 		return "", ErrUserNotFound
 
 	}
@@ -158,7 +158,7 @@ func handleAuthentication(request Request) (string, error) {
 		return "", fmt.Errorf("invalid password: %v", http.StatusUnauthorized)
 	}
 
-	token, err := generateJWT(db, *request.Cpf)
+	token, err := generateJWT(db, *request.Email)
 	if err != nil {
 		log.Println("Error generating JWT token:", err)
 		return "", err
@@ -167,8 +167,8 @@ func handleAuthentication(request Request) (string, error) {
 }
 
 func handleUserCreation(request Request) error {
-	if request.Cpf == nil || request.Password == nil || request.Role == nil {
-		return fmt.Errorf("cpf, password and role are required")
+	if request.Email == nil || request.Password == nil || request.Role == nil {
+		return fmt.Errorf("email, password and role are required")
 	}
 
 	if *request.Role != UserRoleAdmin && *request.Role != UserRoleUser {
@@ -182,9 +182,9 @@ func handleUserCreation(request Request) error {
 	}
 	defer db.Close()
 
-	user, err := findUserByCPF(db, *request.Cpf)
+	user, err := findUserByEmail(db, *request.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.Println("Error finding user by CPF:", err)
+		log.Println("Error finding user by Email:", err)
 		return err
 	}
 
@@ -213,8 +213,8 @@ func setupDbConnection() (*sql.DB, error) {
 }
 
 func handleGetUser(request Request) (*User, error) {
-	if request.Cpf == nil {
-		return nil, fmt.Errorf("cpf is required")
+	if request.Email == nil {
+		return nil, fmt.Errorf("email is required")
 	}
 	db, err := setupDbConnection()
 	if err != nil {
@@ -223,7 +223,7 @@ func handleGetUser(request Request) (*User, error) {
 	}
 	defer db.Close()
 
-	user, err := findUserByCPF(db, *request.Cpf)
+	user, err := findUserByEmail(db, *request.Email)
 	if err != nil {
 		log.Println("Error finding user by CPF:", err)
 		return nil, err
@@ -236,15 +236,15 @@ func handleGetUser(request Request) (*User, error) {
 	return user, nil
 }
 
-func findUserByCPF(db *sql.DB, cpf string) (*User, error) {
+func findUserByEmail(db *sql.DB, email string) (*User, error) {
 	var user User
-	const findUserByCpfQuery = "SELECT id, cpf, password, role FROM \"user\" WHERE cpf = $1"
-	err := db.QueryRow(findUserByCpfQuery, cpf).Scan(&user.ID, &user.Cpf, &user.Password, &user.Role)
+	const findUserByEmailQuery = "SELECT id, email, password, role FROM \"user\" WHERE email = $1"
+	err := db.QueryRow(findUserByEmailQuery, email).Scan(&user.ID, &user.Email, &user.Password, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to query user by cpf: %w", err)
+		return nil, fmt.Errorf("failed to query user by email: %w", err)
 	}
 	return &user, nil
 }
@@ -255,13 +255,13 @@ func createUser(db *sql.DB, request Request) error {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	const query = "INSERT INTO \"user\" (id, cpf, password, role) VALUES ($1, $2, $3, $4)"
-	_, err = db.Exec(query, uuid.New(), request.Cpf, hashedPassword, request.Role)
+	const query = "INSERT INTO \"user\" (id, email, password, role) VALUES ($1, $2, $3, $4)"
+	_, err = db.Exec(query, uuid.New(), request.Email, hashedPassword, request.Role)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
-	fmt.Printf("User successfully created with cpf: %s\n", *request.Cpf)
+	fmt.Printf("User successfully created with email: %s\n", *request.Email)
 	return nil
 }
 
@@ -269,17 +269,17 @@ func verifyPassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
 
-func generateJWT(db *sql.DB, cpf string) (string, error) {
-	user, err := findUserByCPF(db, cpf)
+func generateJWT(db *sql.DB, email string) (string, error) {
+	user, err := findUserByEmail(db, email)
 	if err != nil {
-		return "", fmt.Errorf("failed to find user by cpf: %w", err)
+		return "", fmt.Errorf("failed to find user by email: %w", err)
 	}
 	expirationTime := time.Now().Add(5 * time.Minute)
 	claims := &Claims{
-		CPF:  cpf,
-		Role: user.Role,
+		Email: email,
+		Role:  user.Role,
 		StandardClaims: jwt.StandardClaims{
-			Subject:   cpf,
+			Subject:   email,
 			IssuedAt:  time.Now().Unix(),
 			ExpiresAt: expirationTime.Unix(),
 			Issuer:    "my_key",
