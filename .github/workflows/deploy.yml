@@ -1,0 +1,61 @@
+name: Deploy DigitalOcean Function
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go environment
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+
+      - name: Install doctl
+        run: |
+          sudo snap install doctl
+
+      - name: Authenticate with DigitalOcean
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          doctl auth init --access-token $DIGITALOCEAN_ACCESS_TOKEN
+          
+      - name: Retrieve database connection parameters
+        run: |
+          DB_ID=$(doctl db list | grep pg | awk '{print $1}')
+          DATABASE_PASSWORD=$(doctl databases user get $DB_ID doadmin --format Password --no-header)
+          DATABASE_URL=$(doctl databases connection $DB_ID --format Host --no-header)
+          DATABASE_PORT=$(doctl databases connection $DB_ID --format Port --no-header)
+          DATABASE_USERNAME=$(doctl databases connection $DB_ID --format User --no-header)
+          echo "DATABASE_PASSWORD=$DATABASE_PASSWORD" >> $GITHUB_ENV
+          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
+          echo "DATABASE_PORT=$DATABASE_PORT" >> $GITHUB_ENV
+          echo "DATABASE_USERNAME=$DATABASE_USERNAME" >> $GITHUB_ENV
+          
+      - name: Overwrite .env file with secrets
+        run: |
+          echo "DATABASE_URL=${{ env.DATABASE_URL }}" >> packages/authentication/authenticate/.env
+          echo "DATABASE_NAME=${{ secrets.DATABASE_NAME }}" >> packages/authentication/authenticate/.env
+          echo "DATABASE_USERNAME=${{ env.DATABASE_USERNAME }}" >> packages/authentication/authenticate/.env
+          echo "DATABASE_PASSWORD=${{ env.DATABASE_PASSWORD }}" >> packages/authentication/authenticate/.env
+          echo "DATABASE_SCHEMA=${{ secrets.DATABASE_SCHEMA }}" >> packages/authentication/authenticate/.env
+          echo "DATABASE_PORT=${{ env.DATABASE_PORT }}" >> packages/authentication/authenticate/.env
+          echo "JWT_KEY=${{ secrets.JWT_KEY }}" >> packages/authentication/authenticate/.env
+
+      - name: Connect to DigitalOcean Functions Namespace
+        run: |
+          doctl serverless connect
+
+      - name: Deploy Function to DigitalOcean
+        working-directory: ../
+        run: |
+          doctl serverless deploy my-video-auth --remote-build --env my-video-auth/packages/authentication/authenticate/.env
