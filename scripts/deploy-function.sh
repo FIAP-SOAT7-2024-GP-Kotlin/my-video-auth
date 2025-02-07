@@ -1,7 +1,7 @@
 #!/bin/bash
 PROJECT_ID=a6c0754c-a2bd-41e4-b40a-85ebbc0efd1d
 PROJECT_NAME=first-project
-NAMESPACE_ID=fn-40807b32-b98c-439f-8bd7-99d62dcc3994
+NAMESPACE_ID=fn-e6f7f379-2f4d-44bc-bce8-1880da1df35a
 
 # List namespaces
 doctl serverless namespaces list
