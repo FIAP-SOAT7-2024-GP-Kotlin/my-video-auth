@@ -28,6 +28,7 @@ type Request struct {
 	Type     RequestType `json:"type"`
 	Token    *string     `json:"token"`
 	Role     *UserRole   `json:"role"`
+	Id       *uuid.UUID  `json:"id"`
 }
 
 type RequestType string
@@ -37,6 +38,7 @@ const (
 	UserAuthentication RequestType = "USER_AUTHENTICATION"
 	JwtValidation      RequestType = "JWT_VALIDATION"
 	GetUser            RequestType = "GET_USER"
+	GetUserById        RequestType = "GET_USER_BY_ID"
 )
 
 type Response struct {
@@ -120,12 +122,19 @@ func Main(input Request) (*Response, error) {
 		}
 		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("Valid token for email: %s", claims.Email)}, nil
 	case GetUser:
-		response, err := handleGetUser(input)
+		response, err := handleGetUserByEmail(input)
 		if err != nil {
 			log.Println("Error getting user:", err)
 			return &Response{StatusCode: http.StatusNotFound, Message: err.Error()}, err
 		}
-		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("User found for cpf: %s, role: %s", response.Email, response.Role), Body: map[string]string{"cpf": response.Email, "role": response.Role}}, nil
+		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("User found by email: %s, role: %s", response.Email, response.Role), Body: map[string]string{"email": response.Email, "role": response.Role}}, nil
+	case GetUserById:
+		response, err := handleGetUserById(input)
+		if err != nil {
+			log.Printf("Error while retrieving user by id", err)
+			return &Response{StatusCode: http.StatusNotFound, Message: err.Error()}, err
+		}
+		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("User found : %s, role: %s", response.Email, response.Role), Body: map[string]string{"email": response.Email, "role": response.Role}}, nil
 	default:
 		return &Response{StatusCode: http.StatusBadRequest, Message: "Invalid request type"}, ErrNoRequest
 	}
@@ -212,7 +221,7 @@ func setupDbConnection() (*sql.DB, error) {
 	return db, nil
 }
 
-func handleGetUser(request Request) (*User, error) {
+func handleGetUserByEmail(request Request) (*User, error) {
 	if request.Email == nil {
 		return nil, fmt.Errorf("email is required")
 	}
@@ -236,10 +245,47 @@ func handleGetUser(request Request) (*User, error) {
 	return user, nil
 }
 
+func handleGetUserById(request Request) (*User, error) {
+	if request.Id == nil {
+		return nil, fmt.Errorf("email is required")
+	}
+	db, err := setupDbConnection()
+	if err != nil {
+		log.Println("Error connecting to database:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	user, err := findUserById(db, *request.Id)
+	if err != nil {
+		log.Println("Error finding user by CPF:", err)
+		return nil, err
+	}
+
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	return user, nil
+}
+
 func findUserByEmail(db *sql.DB, email string) (*User, error) {
 	var user User
 	const findUserByEmailQuery = "SELECT id, email, password, role FROM \"user\" WHERE email = $1"
 	err := db.QueryRow(findUserByEmailQuery, email).Scan(&user.ID, &user.Email, &user.Password, &user.Role)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to query user by email: %w", err)
+	}
+	return &user, nil
+}
+
+func findUserById(db *sql.DB, id uuid.UUID) (*User, error) {
+	var user User
+	const findUserByEmailQuery = "SELECT id, email, password, role FROM \"user\" WHERE id = $1"
+	err := db.QueryRow(findUserByEmailQuery, id.String()).Scan(&user.ID, &user.Email, &user.Password, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
