@@ -129,7 +129,7 @@ func Main(input Request) (*Response, error) {
 		}
 		return &Response{StatusCode: http.StatusOK, Message: fmt.Sprintf("User found by email: %s, role: %s", response.Email, response.Role), Body: map[string]string{"email": response.Email, "role": response.Role}}, nil
 	case GetUserById:
-		response, err := handleGetUserByEmail(input)
+		response, err := handleGetUserById(input)
 		if err != nil {
 			log.Printf("Error while retrieving user by id", err)
 			return &Response{StatusCode: http.StatusNotFound, Message: err.Error()}, err
@@ -256,7 +256,7 @@ func handleGetUserById(request Request) (*User, error) {
 	}
 	defer db.Close()
 
-	user, err := findUserByEmail(db, *request.Email)
+	user, err := findUserById(db, *request.Id)
 	if err != nil {
 		log.Println("Error finding user by CPF:", err)
 		return nil, err
